@@ -1,0 +1,7 @@
+[tasks.bundle]
+description = "Build signed release AAB for Android Automotive OS"
+run = "./gradlew --no-daemon bundleGmsAutomotiveUniversalRelease"
+
+[tasks.apk]
+description = "Build signed release APK for Android Automotive OS"
+run = "./gradlew --no-daemon assembleGmsAutomotiveUniversalRelease"

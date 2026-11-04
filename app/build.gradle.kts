@@ -46,17 +46,43 @@ val discordApplicationId =
         ).trim()
 val discordApplicationIdLong = discordApplicationId.toLongOrNull() ?: 1165706613961789445L
 val discordRedirectScheme = "discord-$discordApplicationId"
-val releaseKeystoreFile = file("keystore/release.keystore")
+val defaultReleaseKeystorePath = "${System.getProperty("user.home")}/.local/share/android.jks"
+val releaseKeystorePath =
+    localProperties.getProperty("RELEASE_KEYSTORE_PATH")?.trim()
+        ?: System.getenv("RELEASE_KEYSTORE_PATH")?.trim()
+        ?: defaultReleaseKeystorePath
+val releaseKeystoreFile = file(releaseKeystorePath).let {
+    if (it.isFile) it else file("keystore/release.keystore")
+}
 val releaseStorePassword =
-    System.getenv("STORE_PASSWORD")?.takeIf { it.isNotBlank() }
+    localProperties.getProperty("RELEASE_STORE_PASSWORD")?.takeIf { it.isNotBlank() }
+        ?: localProperties.getProperty("STORE_PASSWORD")?.takeIf { it.isNotBlank() }
+        ?: System.getenv("RELEASE_STORE_PASSWORD")?.takeIf { it.isNotBlank() }
+        ?: System.getenv("STORE_PASSWORD")?.takeIf { it.isNotBlank() }
         ?: System.getenv("KEYSTORE_PASSWORD")?.takeIf { it.isNotBlank() }
-val releaseKeyAlias = System.getenv("KEY_ALIAS")?.takeIf { it.isNotBlank() }
-val releaseKeyPassword = System.getenv("KEY_PASSWORD")?.takeIf { it.isNotBlank() }
+val releaseKeyAlias =
+    localProperties.getProperty("RELEASE_KEY_ALIAS")?.takeIf { it.isNotBlank() }
+        ?: localProperties.getProperty("KEY_ALIAS")?.takeIf { it.isNotBlank() }
+        ?: System.getenv("RELEASE_KEY_ALIAS")?.takeIf { it.isNotBlank() }
+        ?: System.getenv("KEY_ALIAS")?.takeIf { it.isNotBlank() }
+        ?: "key0"
+val releaseKeyPassword =
+    localProperties.getProperty("RELEASE_KEY_PASSWORD")?.takeIf { it.isNotBlank() }
+        ?: localProperties.getProperty("KEY_PASSWORD")?.takeIf { it.isNotBlank() }
+        ?: System.getenv("RELEASE_KEY_PASSWORD")?.takeIf { it.isNotBlank() }
+        ?: System.getenv("KEY_PASSWORD")?.takeIf { it.isNotBlank() }
+        ?: releaseStorePassword
 val hasReleaseSigningConfig =
     releaseKeystoreFile.isFile &&
         releaseStorePassword != null &&
         releaseKeyAlias != null &&
         releaseKeyPassword != null
+
+if (hasReleaseSigningConfig) {
+    println("[SIGNING] Release signing config is ACTIVE using: ${releaseKeystoreFile.absolutePath} (alias: $releaseKeyAlias)")
+} else {
+    println("[SIGNING] Release signing config is NOT ACTIVE (falling back to debug)")
+}
 android {
     namespace = "moe.rukamori.archivetune"
     compileSdk = 37
@@ -64,10 +90,10 @@ android {
     compileSdkMinor = 2
 
     defaultConfig {
-    applicationId = "moe.rukamori.archivetune"
+        applicationId = "dev.kroot.archivetune"
         minSdk = 26
         targetSdk = 37
-        versionCode = 142
+        versionCode = localProperties.getProperty("VERSION_CODE")?.toIntOrNull() ?: 143
         versionName = "15.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -210,8 +236,10 @@ android {
 
     buildTypes {
         release {
-            if (hasReleaseSigningConfig) {
-                signingConfig = signingConfigs.getByName("release")
+            signingConfig = if (hasReleaseSigningConfig) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
             }
             isMinifyEnabled = true
             isShrinkResources = true
