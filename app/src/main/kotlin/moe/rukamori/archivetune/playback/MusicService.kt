@@ -1288,16 +1288,14 @@ class MusicService :
         }
         val mediaSessionBuilder = MediaLibrarySession.Builder(this, player, mediaLibrarySessionCallback)
             .setBitmapLoader(CoilBitmapLoader(this, scope))
-        if (BuildConfig.DEVICE != "automotive") {
-            mediaSessionBuilder.setSessionActivity(
-                    PendingIntent.getActivity(
-                        this,
-                        0,
-                        Intent(this, MainActivity::class.java),
-                        PendingIntent.FLAG_IMMUTABLE,
-                    ),
-                )
-        }
+            .setSessionActivity(
+                PendingIntent.getActivity(
+                    this,
+                    0,
+                    Intent(this, MainActivity::class.java),
+                    PendingIntent.FLAG_IMMUTABLE,
+                ),
+            )
         mediaSession = mediaSessionBuilder.build()
         mediaNotificationProvider =
             ArchiveTuneMediaNotificationProvider(
