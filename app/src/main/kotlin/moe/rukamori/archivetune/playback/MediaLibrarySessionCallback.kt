@@ -86,6 +86,7 @@ class MediaLibrarySessionCallback
         val database: MusicDatabase,
         val downloadUtil: DownloadUtil,
         private val androidAutoSettings: AndroidAutoSettingsUseCases,
+        private val localMediaSyncCoordinator: moe.rukamori.archivetune.localmedia.LocalMediaSyncCoordinator,
     ) : MediaLibrarySession.Callback {
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
         private var pendingSearchJob: Job? = null
@@ -254,8 +255,11 @@ class MediaLibrarySessionCallback
             session: MediaLibrarySession,
             browser: MediaSession.ControllerInfo,
             params: MediaLibraryService.LibraryParams?,
-        ): ListenableFuture<LibraryResult<MediaItem>> =
-            Futures.immediateFuture(
+        ): ListenableFuture<LibraryResult<MediaItem>> {
+            if (isCarController(session, browser)) {
+                localMediaSyncCoordinator.syncDebounced(initialDelayMs = 0L)
+            }
+            return Futures.immediateFuture(
                 LibraryResult.ofItem(
                     MediaItem
                         .Builder()
@@ -272,6 +276,7 @@ class MediaLibrarySessionCallback
                     params,
                 ),
             )
+        }
 
         override fun onSubscribe(
             session: MediaLibrarySession,
@@ -467,6 +472,9 @@ class MediaLibrarySessionCallback
         ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> =
             scope.future(Dispatchers.IO) {
                 val isCarController = isCarController(session, browser)
+                if (isCarController && (parentId == MusicService.ROOT || parentId == MusicService.LIBRARY || parentId == MusicService.SONG)) {
+                    localMediaSyncCoordinator.syncDebounced(initialDelayMs = 0L)
+                }
                 val configuration = if (isCarController) {
                     androidAutoSettings.currentConfiguration()
                 } else {
