@@ -67,7 +67,7 @@ class LocalMediaIndexer @Inject constructor(
         val roots = linkedSetOf<File>()
 
         runCatching {
-            Environment.getExternalStorageDirectory()?.takeIf { it.exists() && it.canRead() }?.let(roots::add)
+            Environment.getExternalStorageDirectory()?.takeIf { it.exists() && it.canRead() }?.canonicalFile?.let(roots::add)
         }
 
         runCatching {
@@ -83,7 +83,7 @@ class LocalMediaIndexer @Inject constructor(
                         }.getOrNull()
                     }
                     if (dir != null && dir.exists() && dir.canRead()) {
-                        roots.add(dir)
+                        dir.canonicalFile?.let(roots::add)
                     }
                 }
             }
@@ -97,7 +97,7 @@ class LocalMediaIndexer @Inject constructor(
                     if (androidIndex > 0) {
                         val rootDir = File(path.substring(0, androidIndex))
                         if (rootDir.exists() && rootDir.canRead()) {
-                            roots.add(rootDir)
+                            rootDir.canonicalFile?.let(roots::add)
                         }
                     }
                 }
