@@ -45,6 +45,7 @@ import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.YouTubeLocale
 import moe.rukamori.archivetune.kugou.KuGou
 import moe.rukamori.archivetune.lastfm.LastFM
+import moe.rukamori.archivetune.localmedia.LocalMediaSyncCoordinator
 import moe.rukamori.archivetune.paxsenix.PaxsenixLyrics
 import moe.rukamori.archivetune.playback.stream.YoutubeiStreamRepository
 import moe.rukamori.archivetune.scrobbling.LastFmServiceConfig
@@ -96,6 +97,9 @@ class App :
     @Inject
     lateinit var restoreLauncherEntry: RestoreLauncherEntryUseCase
 
+    @Inject
+    lateinit var localMediaSyncCoordinator: dagger.Lazy<LocalMediaSyncCoordinator>
+
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     @Volatile private var isInitialized = false
@@ -137,6 +141,7 @@ class App :
         initializeCriticalSync()
         initializeDeferredAsync()
         initializeLauncherEntry()
+        localMediaSyncCoordinator.get().start()
     }
 
     private fun initializeLauncherEntry() {
