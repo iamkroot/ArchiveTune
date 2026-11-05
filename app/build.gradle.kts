@@ -93,8 +93,8 @@ android {
         applicationId = "dev.kroot.archivetune"
         minSdk = 26
         targetSdk = 37
-        versionCode = localProperties.getProperty("VERSION_CODE")?.toIntOrNull() ?: 143
-        versionName = "15.1.0"
+        versionCode = localProperties.getProperty("VERSION_CODE")?.toIntOrNull() ?: 144
+        versionName = "15.1.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
