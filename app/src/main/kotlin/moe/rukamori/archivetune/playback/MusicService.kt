@@ -313,6 +313,9 @@ class MusicService :
     lateinit var androidAutoSettings: AndroidAutoSettingsUseCases
 
     @Inject
+    lateinit var localMediaSyncCoordinator: moe.rukamori.archivetune.localmedia.LocalMediaSyncCoordinator
+
+    @Inject
     internal lateinit var loadWidgetInsightsUseCase: LoadWidgetInsightsUseCase
 
     @Inject
@@ -1322,6 +1325,16 @@ class MusicService :
                     mediaSession.notifyChildrenChanged(HOME, homeItemCount, null)
                     mediaSession.notifyChildrenChanged(LIBRARY, 5, null)
                 }
+        }
+        scope.launch(Dispatchers.IO) {
+            localMediaSyncCoordinator.onSyncCompleted.collect {
+                val songCount = runCatching { database.songsByCreateDateAsc().first().size }.getOrDefault(0)
+                withContext(Dispatchers.Main) {
+                    mediaSession.notifyChildrenChanged(ROOT, 4, null)
+                    mediaSession.notifyChildrenChanged(LIBRARY, 5, null)
+                    mediaSession.notifyChildrenChanged(SONG, songCount, null)
+                }
+            }
         }
         player.repeatMode = REPEAT_MODE_OFF
 

@@ -257,7 +257,10 @@ class MediaLibrarySessionCallback
             params: MediaLibraryService.LibraryParams?,
         ): ListenableFuture<LibraryResult<MediaItem>> {
             if (isCarController(session, browser)) {
-                localMediaSyncCoordinator.syncDebounced(initialDelayMs = 0L)
+                val config = androidAutoSettings.currentConfiguration()
+                if (config.localSongs) {
+                    localMediaSyncCoordinator.syncDebounced(initialDelayMs = 0L)
+                }
             }
             return Futures.immediateFuture(
                 LibraryResult.ofItem(
@@ -472,9 +475,6 @@ class MediaLibrarySessionCallback
         ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> =
             scope.future(Dispatchers.IO) {
                 val isCarController = isCarController(session, browser)
-                if (isCarController && (parentId == MusicService.ROOT || parentId == MusicService.LIBRARY || parentId == MusicService.SONG)) {
-                    localMediaSyncCoordinator.syncDebounced(initialDelayMs = 0L)
-                }
                 val configuration = if (isCarController) {
                     androidAutoSettings.currentConfiguration()
                 } else {

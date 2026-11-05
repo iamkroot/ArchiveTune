@@ -28,13 +28,12 @@ class EmbeddedLyricsExtractor(
         filePath: String? = null,
     ): String? =
         try {
-            extractId3Lyrics(contentUri, filePath)
-                ?: when {
-                    isMp4(displayName, mimeType) -> extractMp4Lyrics(contentUri, filePath)
-                    isFlac(displayName, mimeType) -> extractFlacLyrics(contentUri, filePath)
-                    isOgg(displayName, mimeType) -> extractOggLyrics(contentUri, filePath)
-                    else -> extractVorbisCommentLyrics(contentUri, filePath)
-                }
+            when {
+                isMp4(displayName, mimeType) -> extractMp4Lyrics(contentUri, filePath)
+                isFlac(displayName, mimeType) -> extractFlacLyrics(contentUri, filePath)
+                isOgg(displayName, mimeType) -> extractOggLyrics(contentUri, filePath)
+                else -> extractId3Lyrics(contentUri, filePath) ?: extractVorbisCommentLyrics(contentUri, filePath)
+            }
         } catch (error: Throwable) {
             if (error is CancellationException) throw error
             Timber.tag(LogTag).w(error, "Failed to extract embedded lyrics for %s", contentUri)

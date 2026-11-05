@@ -11,6 +11,8 @@ import android.content.ContentUris
 import android.content.Context
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
+import android.os.storage.StorageManager
 import android.provider.MediaStore
 import androidx.compose.runtime.Immutable
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -110,7 +112,17 @@ class LocalSongScanner @Inject constructor(
                 val summary = database.withTransaction {
                     val scannedIds = enriched.tracks.map(LocalTrackRecord::id)
                     val scannedIdSet = scannedIds.toSet()
-                    val removedIds = localSongIds().filterNot(scannedIdSet::contains)
+                    val mountedVolumes = getMountedVolumes()
+                    val isFullScan = scanConfig.includedFolders.isEmpty()
+                    val removedIds = if (isFullScan) {
+                        localSongIds().filter { id ->
+                            val vol = extractVolumeOrRoot(id)
+                            val isMounted = vol == null || vol in mountedVolumes
+                            isMounted && !scannedIdSet.contains(id)
+                        }
+                    } else {
+                        emptyList()
+                    }
                     removedIds.chunked(SqlBatchSize).forEach(::deleteSongsByIds)
                     val existingSongs = loadSongs(scannedIds)
                     val existingLyrics = loadLyrics(scannedIds)
@@ -371,7 +383,10 @@ class LocalSongScanner @Inject constructor(
             add(MediaStore.Audio.Media.SIZE)
             add(MediaStore.Audio.Media.MIME_TYPE)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) add(MediaStore.Audio.Media.ALBUM_ARTIST)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) add(MediaStore.MediaColumns.RELATIVE_PATH)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                add(MediaStore.MediaColumns.VOLUME_NAME)
+                add(MediaStore.MediaColumns.RELATIVE_PATH)
+            }
             add(MediaStore.MediaColumns.DATA)
         }.toTypedArray()
         val selection = buildList {
@@ -404,6 +419,7 @@ class LocalSongScanner @Inject constructor(
             val modifiedIndex = it.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_MODIFIED)
             val sizeIndex = it.getColumnIndexOrThrow(MediaStore.Audio.Media.SIZE)
             val mimeIndex = it.getColumnIndexOrThrow(MediaStore.Audio.Media.MIME_TYPE)
+            val volumeIndex = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) it.getColumnIndex(MediaStore.MediaColumns.VOLUME_NAME) else -1
             val relativeIndex = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) it.getColumnIndex(MediaStore.MediaColumns.RELATIVE_PATH) else -1
             val dataIndex = it.getColumnIndex(MediaStore.MediaColumns.DATA)
             while (it.moveToNext()) {
@@ -415,7 +431,17 @@ class LocalSongScanner @Inject constructor(
                 val displayName = it.getStringOrNull(displayNameIndex)
                 val mime = it.getStringOrNull(mimeIndex)?.takeIf(String::isNotBlank) ?: "audio/*"
                 if (!SupportedLocalAudio.isSupported(displayName, mime)) continue
-                val uri = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, it.getLong(idIndex))
+                val rawId = it.getLong(idIndex)
+                val volumeName = if (volumeIndex >= 0 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    it.getStringOrNull(volumeIndex) ?: MediaStore.VOLUME_EXTERNAL
+                } else {
+                    MediaStore.VOLUME_EXTERNAL
+                }
+                val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    ContentUris.withAppendedId(MediaStore.Audio.Media.getContentUri(volumeName), rawId)
+                } else {
+                    ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, rawId)
+                }
                 val modified = it.getLong(modifiedIndex)
                 val size = it.getLong(sizeIndex).coerceAtLeast(0L)
                 val metadata = metadataReader.read(uri, modified, size, absolutePath)
@@ -545,6 +571,53 @@ class LocalSongScanner @Inject constructor(
                 folderPath.startsWith("$folder/") ||
                 folderPath.endsWith("/$folder") ||
                 folderPath.contains("/$folder/")
+        }
+    }
+
+    private fun extractVolumeOrRoot(songId: String): String? {
+        val uri = runCatching { Uri.parse(songId) }.getOrNull() ?: return null
+        if (uri.scheme == "content" && uri.authority == MediaStore.AUTHORITY) {
+            val segment = uri.pathSegments.firstOrNull()?.lowercase(Locale.ROOT)
+            return when (segment) {
+                "external", "external_primary" -> "primary"
+                else -> segment
+            }
+        } else if (uri.scheme == "file") {
+            val path = uri.path ?: return null
+            val parts = path.trim('/').split('/')
+            if (parts.size >= 2 && parts[0] == "storage") {
+                val vol = parts[1].lowercase(Locale.ROOT)
+                return if (vol == "emulated" || vol == "self") "primary" else vol
+            }
+        }
+        return null
+    }
+
+    private fun getMountedVolumes(): Set<String> = buildSet {
+        add("primary")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            runCatching {
+                MediaStore.getExternalVolumeNames(context).forEach { name ->
+                    val lower = name.lowercase(Locale.ROOT)
+                    if (lower == MediaStore.VOLUME_EXTERNAL_PRIMARY.lowercase(Locale.ROOT) || lower == "external") {
+                        add("primary")
+                    } else {
+                        add(lower)
+                    }
+                }
+            }
+        }
+        runCatching {
+            val storageManager = context.getSystemService(Context.STORAGE_SERVICE) as? StorageManager
+            storageManager?.storageVolumes?.forEach { vol ->
+                if (vol.state == Environment.MEDIA_MOUNTED || vol.state == Environment.MEDIA_MOUNTED_READ_ONLY) {
+                    if (vol.isPrimary) {
+                        add("primary")
+                    } else {
+                        vol.uuid?.lowercase(Locale.ROOT)?.let(::add)
+                    }
+                }
+            }
         }
     }
 
