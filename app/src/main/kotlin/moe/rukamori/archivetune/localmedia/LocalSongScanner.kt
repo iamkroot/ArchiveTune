@@ -372,7 +372,7 @@ class LocalSongScanner @Inject constructor(
             add(MediaStore.Audio.Media.MIME_TYPE)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) add(MediaStore.Audio.Media.ALBUM_ARTIST)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) add(MediaStore.MediaColumns.RELATIVE_PATH)
-            else add(MediaStore.MediaColumns.DATA)
+            add(MediaStore.MediaColumns.DATA)
         }.toTypedArray()
         val selection = buildList {
             add("${MediaStore.Audio.Media.SIZE} > 0")
@@ -404,11 +404,13 @@ class LocalSongScanner @Inject constructor(
             val modifiedIndex = it.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_MODIFIED)
             val sizeIndex = it.getColumnIndexOrThrow(MediaStore.Audio.Media.SIZE)
             val mimeIndex = it.getColumnIndexOrThrow(MediaStore.Audio.Media.MIME_TYPE)
-            val relativeIndex = it.getColumnIndex(MediaStore.MediaColumns.RELATIVE_PATH)
+            val relativeIndex = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) it.getColumnIndex(MediaStore.MediaColumns.RELATIVE_PATH) else -1
             val dataIndex = it.getColumnIndex(MediaStore.MediaColumns.DATA)
             while (it.moveToNext()) {
                 currentCoroutineContext().ensureActive()
-                val folder = resolveNormalizedFolderPath(it.getStringOrNull(relativeIndex), it.getStringOrNull(dataIndex))
+                val relativePath = if (relativeIndex >= 0) it.getStringOrNull(relativeIndex) else null
+                val absolutePath = if (dataIndex >= 0) it.getStringOrNull(dataIndex) else null
+                val folder = resolveNormalizedFolderPath(relativePath, absolutePath)
                 if (!shouldIncludeFolder(folder, included) || shouldExcludeFolder(folder, excluded)) continue
                 val displayName = it.getStringOrNull(displayNameIndex)
                 val mime = it.getStringOrNull(mimeIndex)?.takeIf(String::isNotBlank) ?: "audio/*"
@@ -416,7 +418,7 @@ class LocalSongScanner @Inject constructor(
                 val uri = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, it.getLong(idIndex))
                 val modified = it.getLong(modifiedIndex)
                 val size = it.getLong(sizeIndex).coerceAtLeast(0L)
-                val metadata = metadataReader.read(uri, modified, size)
+                val metadata = metadataReader.read(uri, modified, size, absolutePath)
                 val duration = metadata.durationSeconds ?: (it.getLong(durationIndex).coerceAtLeast(0L) / 1000L)
                     .coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
                 if (duration < scanConfig.sanitizedMinimumDurationSeconds) continue
@@ -442,7 +444,7 @@ class LocalSongScanner @Inject constructor(
                     thumbnailUrl = metadata.thumbnailUrl,
                     mediaStoreThumbnailUrl = albumId?.takeIf { album != null }
                         ?.let { value -> ContentUris.withAppendedId(AlbumArtUri, value).toString() },
-                    embeddedLyrics = lyricsExtractor.extract(contentUri = uri, displayName = displayName, mimeType = mime)
+                    embeddedLyrics = lyricsExtractor.extract(contentUri = uri, displayName = displayName, mimeType = mime, filePath = absolutePath)
                         ?.let(LyricsUtils::lyricsOrNotFound)?.takeIf { value -> value != LyricsEntity.LYRICS_NOT_FOUND },
                 )
             }

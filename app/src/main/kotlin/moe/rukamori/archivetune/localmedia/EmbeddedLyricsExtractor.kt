@@ -11,6 +11,7 @@ import android.content.ContentResolver
 import android.net.Uri
 import kotlinx.coroutines.CancellationException
 import timber.log.Timber
+import java.io.File
 import java.io.EOFException
 import java.io.InputStream
 import java.nio.charset.Charset
@@ -24,14 +25,15 @@ class EmbeddedLyricsExtractor(
         contentUri: Uri,
         displayName: String?,
         mimeType: String?,
+        filePath: String? = null,
     ): String? =
         try {
-            extractId3Lyrics(contentUri)
+            extractId3Lyrics(contentUri, filePath)
                 ?: when {
-                    isMp4(displayName, mimeType) -> extractMp4Lyrics(contentUri)
-                    isFlac(displayName, mimeType) -> extractFlacLyrics(contentUri)
-                    isOgg(displayName, mimeType) -> extractOggLyrics(contentUri)
-                    else -> extractVorbisCommentLyrics(contentUri)
+                    isMp4(displayName, mimeType) -> extractMp4Lyrics(contentUri, filePath)
+                    isFlac(displayName, mimeType) -> extractFlacLyrics(contentUri, filePath)
+                    isOgg(displayName, mimeType) -> extractOggLyrics(contentUri, filePath)
+                    else -> extractVorbisCommentLyrics(contentUri, filePath)
                 }
         } catch (error: Throwable) {
             if (error is CancellationException) throw error
@@ -39,8 +41,12 @@ class EmbeddedLyricsExtractor(
             null
         }
 
-    private fun extractId3Lyrics(contentUri: Uri): String? {
-        return contentResolver.openInputStream(contentUri)?.buffered()?.use { input ->
+    private fun openStream(contentUri: Uri, filePath: String?): InputStream? =
+        runCatching { contentResolver.openInputStream(contentUri) }.getOrNull()
+            ?: if (!filePath.isNullOrBlank()) runCatching { File(filePath).takeIf { it.canRead() }?.inputStream() }.getOrNull() else null
+
+    private fun extractId3Lyrics(contentUri: Uri, filePath: String? = null): String? {
+        return openStream(contentUri, filePath)?.buffered()?.use { input ->
             val header = input.readByteArray(10) ?: return null
             if (!header.startsWith(Id3Header)) return null
 
@@ -156,8 +162,8 @@ class EmbeddedLyricsExtractor(
             .joinToString("\n") { (timeMs, text) -> "${formatLrcTimestamp(timeMs)}$text" }
     }
 
-    private fun extractMp4Lyrics(contentUri: Uri): String? =
-        contentResolver.openInputStream(contentUri)?.buffered()?.use { input ->
+    private fun extractMp4Lyrics(contentUri: Uri, filePath: String? = null): String? =
+        openStream(contentUri, filePath)?.buffered()?.use { input ->
             parseMp4Boxes(input, Long.MAX_VALUE)
         }
 
@@ -259,8 +265,8 @@ class EmbeddedLyricsExtractor(
         )
     }
 
-    private fun extractFlacLyrics(contentUri: Uri): String? {
-        return contentResolver.openInputStream(contentUri)?.buffered()?.use { input ->
+    private fun extractFlacLyrics(contentUri: Uri, filePath: String? = null): String? {
+        return openStream(contentUri, filePath)?.buffered()?.use { input ->
             val marker = input.readByteArray(4) ?: return null
             if (!marker.startsWith(FlacMarker)) return null
 
@@ -282,10 +288,10 @@ class EmbeddedLyricsExtractor(
         }
     }
 
-    private fun extractOggLyrics(contentUri: Uri): String? = extractVorbisCommentLyrics(contentUri)
+    private fun extractOggLyrics(contentUri: Uri, filePath: String? = null): String? = extractVorbisCommentLyrics(contentUri, filePath)
 
-    private fun extractVorbisCommentLyrics(contentUri: Uri): String? {
-        return contentResolver.openInputStream(contentUri)?.buffered()?.use { input ->
+    private fun extractVorbisCommentLyrics(contentUri: Uri, filePath: String? = null): String? {
+        return openStream(contentUri, filePath)?.buffered()?.use { input ->
             val bytes = input.readUpTo(MaxMetadataBytes)
             val opusOffset = bytes.indexOf(OpusTagsMarker)
             if (opusOffset >= 0) {
