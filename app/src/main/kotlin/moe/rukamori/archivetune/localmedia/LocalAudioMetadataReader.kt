@@ -46,12 +46,24 @@ class LocalAudioMetadataReader @Inject constructor(
         uri: Uri,
         dateModifiedSeconds: Long,
         sizeBytes: Long,
+        filePath: String? = null,
     ): LocalAudioMetadata = withContext(Dispatchers.IO) {
         currentCoroutineContext().ensureActive()
         val retriever = MediaMetadataRetriever()
         var metadata = LocalAudioMetadata()
         try {
-            retriever.setDataSource(context, uri)
+            var dataSourceSet = false
+            try {
+                retriever.setDataSource(context, uri)
+                dataSourceSet = true
+            } catch (error: Exception) {
+                if (!filePath.isNullOrBlank() && File(filePath).canRead()) {
+                    retriever.setDataSource(filePath)
+                    dataSourceSet = true
+                } else {
+                    throw error
+                }
+            }
             metadata = LocalAudioMetadata(
                 title = retriever.readTag(MediaMetadataRetriever.METADATA_KEY_TITLE),
                 artist = retriever.readTag(MediaMetadataRetriever.METADATA_KEY_ARTIST),
